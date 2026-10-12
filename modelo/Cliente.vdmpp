@@ -1,0 +1,27 @@
+class Cliente
+
+types
+
+public IdCliente = nat1;
+
+instance variables
+
+idCliente : IdCliente := 1;
+nombre : seq1 of char := "sin nombre";
+
+operations
+
+public Cliente : IdCliente * seq1 of char ==> Cliente
+Cliente(id, n) ==
+( idCliente := id;
+  nombre := n;
+  return self
+);
+
+public GetId : () ==> IdCliente
+GetId() == return idCliente;
+
+public GetNombre : () ==> seq1 of char
+GetNombre() == return nombre;
+
+end Cliente

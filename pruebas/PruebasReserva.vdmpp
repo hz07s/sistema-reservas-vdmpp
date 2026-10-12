@@ -1,0 +1,147 @@
+class PruebasReserva
+
+instance variables
+
+io : IO := new IO();
+
+-- IO`echo es una operacion que devuelve bool; el resultado no interesa,
+-- pero hay que asignarlo a algo para poder llamarla desde una sentencia.
+eco : bool := true;
+
+functions
+
+private EstadoATexto : Funcion`EstadoAsiento -> seq of char
+EstadoATexto(e) ==
+  cases e:
+    <Disponible> -> "Disponible",
+    <Reservado>  -> "Reservado",
+    <Vendido>    -> "Vendido"
+  end;
+
+private NumeroATexto : nat -> seq of char
+NumeroATexto(n) == VDMUtil`val2seq_of_char[nat](n);
+
+private TitularATexto : [Cliente`IdCliente] -> seq of char
+TitularATexto(t) ==
+  if t = nil
+  then "sin titular"
+  else VDMUtil`val2seq_of_char[[Cliente`IdCliente]](t);
+
+operations
+
+private Imprimir : seq of char ==> ()
+Imprimir(texto) == eco := io.echo(texto ^ "\n");
+
+private Escenario : () ==> SistemaReservas
+Escenario() ==
+( dcl s : SistemaReservas := new SistemaReservas();
+  s.RegistrarCliente(1, "Ana");
+  s.RegistrarCliente(2, "Bruno");
+  s.RegistrarFuncion(10, mk_(20, 11, 2026), 3);
+  s.AgregarAsiento(10, 1, 1, 1, <Vip>);
+  s.AgregarAsiento(10, 2, 1, 2, <Vip>);
+  s.AgregarAsiento(10, 3, 2, 1, <General>);
+  return s
+);
+
+public CP1_ReservaYCompra : () ==> ()
+CP1_ReservaYCompra() ==
+( dcl s : SistemaReservas := Escenario(),
+      e : Funcion`EstadoAsiento,
+      n : nat,
+      d : set of Funcion`IdAsiento,
+      datos : Cliente`IdCliente * seq1 of char;
+  Imprimir("CP1 reservar y comprar un asiento disponible");
+  d := s.AsientosDisponibles(10);
+  Imprimir("asientos disponibles al inicio: esperado 3, obtenido " ^ NumeroATexto(card d));
+  datos := s.DatosCliente(1);
+  Imprimir("cliente que reserva: esperado 1 Ana, obtenido " ^
+           NumeroATexto(datos.#1) ^ " " ^ datos.#2);
+  s.Reservar(10, 1, 1);
+  e := s.EstadoDe(10, 1);
+  Imprimir("estado del asiento 1: esperado Reservado, obtenido " ^ EstadoATexto(e));
+  s.Comprar(10, 1, 1);
+  e := s.EstadoDe(10, 1);
+  Imprimir("estado del asiento 1: esperado Vendido, obtenido " ^ EstadoATexto(e));
+  n := s.TotalEntradas();
+  Imprimir("entradas emitidas: esperado 1, obtenido " ^ NumeroATexto(n));
+  d := s.AsientosDisponibles(10);
+  Imprimir("asientos disponibles al final: esperado 2, obtenido " ^ NumeroATexto(card d))
+);
+
+public CP2_CompraSinReserva : () ==> ()
+CP2_CompraSinReserva() ==
+( dcl s : SistemaReservas := Escenario(),
+      e : Funcion`EstadoAsiento;
+  Imprimir("CP2 comprar un asiento que nunca fue reservado");
+  e := s.EstadoDe(10, 2);
+  Imprimir("estado del asiento 2: esperado Disponible, obtenido " ^ EstadoATexto(e));
+  Imprimir("esperado: violacion de la precondicion de ComprarEntrada");
+  s.Comprar(10, 2, 1);
+  Imprimir("obtenido: la compra se ejecuto, la precondicion no detuvo el caso")
+);
+
+public CP3_DobleReserva : () ==> ()
+CP3_DobleReserva() ==
+( dcl s : SistemaReservas := Escenario(),
+      e : Funcion`EstadoAsiento,
+      t : [Cliente`IdCliente];
+  Imprimir("CP3 dos clientes reservan el mismo asiento");
+  s.Reservar(10, 3, 1);
+  e := s.EstadoDe(10, 3);
+  t := s.TitularDe(10, 3);
+  Imprimir("estado del asiento 3: esperado Reservado, obtenido " ^ EstadoATexto(e));
+  Imprimir("titular del asiento 3: esperado 1, obtenido " ^ TitularATexto(t));
+  Imprimir("esperado: violacion de la precondicion de ReservarAsiento");
+  s.Reservar(10, 3, 2);
+  Imprimir("obtenido: la segunda reserva se ejecuto, hay doble reserva")
+);
+
+public CP4_ExcesoAforo : () ==> ()
+CP4_ExcesoAforo() ==
+( dcl s : SistemaReservas := Escenario(),
+      n : nat,
+      a : nat1;
+  Imprimir("CP4 agregar un asiento mas alla del aforo");
+  n := s.TotalAsientos(10);
+  a := s.AforoDe(10);
+  Imprimir("asientos registrados: esperado 3, obtenido " ^ NumeroATexto(n));
+  Imprimir("aforo maximo: esperado 3, obtenido " ^ NumeroATexto(a));
+  Imprimir("esperado: violacion de la precondicion de AgregarAsiento");
+  s.AgregarAsiento(10, 4, 2, 2, <General>);
+  Imprimir("obtenido: el asiento 4 se agrego, hay sobreventa")
+);
+
+public CP5_CancelarYReasignar : () ==> ()
+CP5_CancelarYReasignar() ==
+( dcl s : SistemaReservas := Escenario(),
+      e : Funcion`EstadoAsiento,
+      t : [Cliente`IdCliente];
+  Imprimir("CP5 cancelar una reserva y reasignar el asiento");
+  s.Reservar(10, 1, 1);
+  s.Cancelar(10, 1, 1);
+  e := s.EstadoDe(10, 1);
+  t := s.TitularDe(10, 1);
+  Imprimir("estado tras cancelar: esperado Disponible, obtenido " ^ EstadoATexto(e));
+  Imprimir("titular tras cancelar: esperado sin titular, obtenido " ^ TitularATexto(t));
+  s.Reservar(10, 1, 2);
+  e := s.EstadoDe(10, 1);
+  t := s.TitularDe(10, 1);
+  Imprimir("estado tras la nueva reserva: esperado Reservado, obtenido " ^ EstadoATexto(e));
+  Imprimir("titular tras la nueva reserva: esperado 2, obtenido " ^ TitularATexto(t))
+);
+
+public CP6_CompraDeOtroCliente : () ==> ()
+CP6_CompraDeOtroCliente() ==
+( dcl s : SistemaReservas := Escenario(),
+      t : [Cliente`IdCliente];
+  Imprimir("CP6 comprar un asiento reservado por otro cliente");
+  s.Reservar(10, 2, 1);
+  t := s.TitularDe(10, 2);
+  Imprimir("titular del asiento 2: esperado 1, obtenido " ^ TitularATexto(t));
+  Imprimir("esperado: violacion de la precondicion de ComprarEntrada");
+  s.Comprar(10, 2, 2);
+  Imprimir("obtenido: Bruno compro un asiento reservado por Ana")
+);
+
+end PruebasReserva

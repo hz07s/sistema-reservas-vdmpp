@@ -1,0 +1,118 @@
+class SistemaReservas
+
+types
+
+public IdFuncion = nat1;
+
+-- Entrada es un record y no una clase aparte: la informacion de que
+-- asiento pertenece a quien queda en un solo lugar del modelo.
+public Entrada ::
+  idFuncion : IdFuncion
+  idAsiento : Funcion`IdAsiento
+  idCliente : Cliente`IdCliente;
+
+instance variables
+
+funciones : map IdFuncion to Funcion := {|->};
+clientes : map Cliente`IdCliente to Cliente := {|->};
+entradas : set of Entrada := {};
+
+inv forall e1, e2 in set entradas &
+      (e1.idFuncion = e2.idFuncion and e1.idAsiento = e2.idAsiento) => e1 = e2;
+inv forall e in set entradas &
+      e.idFuncion in set dom funciones and e.idCliente in set dom clientes;
+
+operations
+
+public RegistrarCliente : Cliente`IdCliente * seq1 of char ==> ()
+RegistrarCliente(id, nombre) ==
+  clientes := clientes munion {id |-> new Cliente(id, nombre)}
+pre id not in set dom clientes
+post id in set dom clientes;
+
+public RegistrarFuncion : IdFuncion * Funcion`Fecha * nat1 ==> ()
+RegistrarFuncion(idF, fecha, aforo) ==
+  funciones := funciones munion {idF |-> new Funcion(idF, fecha, aforo)}
+pre idF not in set dom funciones
+post idF in set dom funciones;
+
+public AgregarAsiento : IdFuncion * Funcion`IdAsiento * nat1 * nat1 *
+                        Funcion`TipoEntrada ==> ()
+AgregarAsiento(idF, idA, fila, numero, tipo) ==
+( dcl f : Funcion := funciones(idF);
+  f.AgregarAsiento(idA, fila, numero, tipo)
+)
+pre idF in set dom funciones;
+
+public Reservar : IdFuncion * Funcion`IdAsiento * Cliente`IdCliente ==> ()
+Reservar(idF, idA, idC) ==
+( dcl f : Funcion := funciones(idF);
+  f.ReservarAsiento(idA, idC)
+)
+pre idF in set dom funciones and idC in set dom clientes;
+
+public Comprar : IdFuncion * Funcion`IdAsiento * Cliente`IdCliente ==> ()
+Comprar(idF, idA, idC) ==
+( dcl f : Funcion := funciones(idF);
+  f.ComprarEntrada(idA, idC);
+  entradas := entradas union {mk_Entrada(idF, idA, idC)}
+)
+pre idF in set dom funciones and idC in set dom clientes
+post entradas = entradas~ union {mk_Entrada(idF, idA, idC)} and
+     card entradas = card entradas~ + 1;
+
+public Cancelar : IdFuncion * Funcion`IdAsiento * Cliente`IdCliente ==> ()
+Cancelar(idF, idA, idC) ==
+( dcl f : Funcion := funciones(idF);
+  f.CancelarReserva(idA, idC)
+)
+pre idF in set dom funciones and idC in set dom clientes;
+
+public EstadoDe : IdFuncion * Funcion`IdAsiento ==> Funcion`EstadoAsiento
+EstadoDe(idF, idA) ==
+( dcl f : Funcion := funciones(idF);
+  return f.ConsultarEstado(idA)
+)
+pre idF in set dom funciones;
+
+public TitularDe : IdFuncion * Funcion`IdAsiento ==> [Cliente`IdCliente]
+TitularDe(idF, idA) ==
+( dcl f : Funcion := funciones(idF);
+  return f.ConsultarTitular(idA)
+)
+pre idF in set dom funciones;
+
+public AsientosDisponibles : IdFuncion ==> set of Funcion`IdAsiento
+AsientosDisponibles(idF) ==
+( dcl f : Funcion := funciones(idF);
+  return f.Disponibles()
+)
+pre idF in set dom funciones;
+
+public TotalAsientos : IdFuncion ==> nat
+TotalAsientos(idF) ==
+( dcl f : Funcion := funciones(idF);
+  return f.TotalAsientos()
+)
+pre idF in set dom funciones;
+
+public AforoDe : IdFuncion ==> nat1
+AforoDe(idF) ==
+( dcl f : Funcion := funciones(idF);
+  return f.GetAforo()
+)
+pre idF in set dom funciones;
+
+public DatosCliente : Cliente`IdCliente ==> Cliente`IdCliente * seq1 of char
+DatosCliente(idC) ==
+( dcl c : Cliente := clientes(idC);
+  dcl i : Cliente`IdCliente := c.GetId();
+  dcl n : seq1 of char := c.GetNombre();
+  return mk_(i, n)
+)
+pre idC in set dom clientes;
+
+public TotalEntradas : () ==> nat
+TotalEntradas() == return card entradas;
+
+end SistemaReservas

@@ -1,0 +1,19 @@
+set dtc
+set inv
+set pre
+set post
+tcov reset
+init
+create t := new PruebasReserva()
+print t.CP1_ReservaYCompra()
+print t.CP2_CompraSinReserva()
+backtrace
+print t.CP3_DobleReserva()
+backtrace
+print t.CP4_ExcesoAforo()
+backtrace
+print t.CP5_CancelarYReasignar()
+print t.CP6_CompraDeOtroCliente()
+backtrace
+tcov write pruebas/vdm.tc
+rtinfo pruebas/vdm.tc

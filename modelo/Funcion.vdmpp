@@ -1,0 +1,106 @@
+class Funcion
+
+types
+
+public IdAsiento = nat1;
+
+public EstadoAsiento = <Disponible> | <Reservado> | <Vendido>;
+
+public TipoEntrada = <Platinum> | <Vip> | <Platea> | <General>;
+
+public Fecha = nat1 * nat1 * nat1
+inv mk_(dia, mes, -) == dia <= 31 and mes <= 12;
+
+public Asiento ::
+  id : IdAsiento
+  fila : nat1
+  numero : nat1
+  estado : EstadoAsiento
+  tipo : TipoEntrada
+  titular : [Cliente`IdCliente]
+inv a == (a.estado = <Disponible>) <=> (a.titular = nil);
+
+instance variables
+
+idFuncion : nat1 := 1;
+fecha : Fecha := mk_(1, 1, 2026);
+aforoMaximo : nat1 := 1;
+
+-- Se usa map y no seq porque la llave del mapeo ya garantiza que un
+-- IdAsiento tenga un solo registro, y por lo tanto un solo estado.
+asientos : map IdAsiento to Asiento := {|->};
+
+inv card dom asientos <= aforoMaximo;
+inv forall i in set dom asientos & asientos(i).id = i;
+inv forall i, j in set dom asientos &
+      (asientos(i).fila = asientos(j).fila and
+       asientos(i).numero = asientos(j).numero) => i = j;
+
+operations
+
+public Funcion : nat1 * Fecha * nat1 ==> Funcion
+Funcion(idF, f, aforo) ==
+( idFuncion := idF;
+  fecha := f;
+  aforoMaximo := aforo;
+  return self
+);
+
+public AgregarAsiento : IdAsiento * nat1 * nat1 * TipoEntrada ==> ()
+AgregarAsiento(id, fila, numero, tipo) ==
+  asientos := asientos munion
+    {id |-> mk_Asiento(id, fila, numero, <Disponible>, tipo, nil)}
+pre id not in set dom asientos and
+    card dom asientos < aforoMaximo and
+    not (exists i in set dom asientos &
+          asientos(i).fila = fila and asientos(i).numero = numero)
+post asientos = asientos~ munion
+    {id |-> mk_Asiento(id, fila, numero, <Disponible>, tipo, nil)};
+
+public ReservarAsiento : IdAsiento * Cliente`IdCliente ==> ()
+ReservarAsiento(id, c) ==
+  asientos(id) := mu(asientos(id), estado |-> <Reservado>, titular |-> c)
+pre id in set dom asientos and asientos(id).estado = <Disponible>
+post asientos(id).estado = <Reservado> and
+     asientos(id).titular = c and
+     {id} <-: asientos = {id} <-: asientos~;
+
+public ComprarEntrada : IdAsiento * Cliente`IdCliente ==> ()
+ComprarEntrada(id, c) ==
+  asientos(id) := mu(asientos(id), estado |-> <Vendido>)
+pre id in set dom asientos and
+    asientos(id).estado = <Reservado> and
+    asientos(id).titular = c
+post asientos(id).estado = <Vendido> and
+     asientos(id).titular = c and
+     {id} <-: asientos = {id} <-: asientos~;
+
+public CancelarReserva : IdAsiento * Cliente`IdCliente ==> ()
+CancelarReserva(id, c) ==
+  asientos(id) := mu(asientos(id), estado |-> <Disponible>, titular |-> nil)
+pre id in set dom asientos and
+    asientos(id).estado = <Reservado> and
+    asientos(id).titular = c
+post asientos(id).estado = <Disponible> and
+     asientos(id).titular = nil and
+     {id} <-: asientos = {id} <-: asientos~;
+
+public ConsultarEstado : IdAsiento ==> EstadoAsiento
+ConsultarEstado(id) == return asientos(id).estado
+pre id in set dom asientos;
+
+public ConsultarTitular : IdAsiento ==> [Cliente`IdCliente]
+ConsultarTitular(id) == return asientos(id).titular
+pre id in set dom asientos;
+
+public Disponibles : () ==> set of IdAsiento
+Disponibles() ==
+  return {i | i in set dom asientos & asientos(i).estado = <Disponible>};
+
+public TotalAsientos : () ==> nat
+TotalAsientos() == return card dom asientos;
+
+public GetAforo : () ==> nat1
+GetAforo() == return aforoMaximo;
+
+end Funcion
