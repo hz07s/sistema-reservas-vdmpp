@@ -22,6 +22,43 @@ inv forall e1, e2 in set entradas &
 inv forall e in set entradas &
       e.idFuncion in set dom funciones and e.idCliente in set dom clientes;
 
+-- Integridad referencial de clientes: la llave del mapeo coincide con
+-- el id que el propio objeto Cliente reporta.
+inv forall c in set dom clientes & clientes(c).GetId() = c;
+
+-- Toda entrada tiene que coincidir con el titular que guarda el
+-- asiento correspondiente. Sin este invariante, nada impediria llamar
+-- a Funcion.ComprarEntrada directamente (sin pasar por
+-- SistemaReservas.Comprar) y dejar una Entrada que no corresponde al
+-- titular real del asiento. La guarda "e.idFuncion in set dom
+-- funciones and ..." evita evaluar ConsultarTitular sobre una funcion
+-- que no existe: en VDM++ "and" es no estricto por la izquierda (logica
+-- LPF), asi que si el primer operando es false el segundo no se evalua
+-- y la expresion completa queda definida. La otra invariante de arriba
+-- ya garantiza e.idFuncion in set dom funciones para toda entrada, pero
+-- se repite aqui para que esta clausula sea autocontenida y no dependa
+-- del orden de evaluacion de las demas.
+inv forall e in set entradas &
+      e.idFuncion in set dom funciones and
+      (funciones(e.idFuncion)).ConsultarTitular(e.idAsiento) = e.idCliente;
+
+-- NOTA (pendiente, no incluido en este invariante): tambien podria
+-- pedirse que todo Asiento.titular distinto de nil pertenezca a
+-- dom clientes. Esa version del invariante no se agrego porque
+-- "asientos" es una variable de instancia privada de Funcion y no hay
+-- una operacion publica que devuelva dom asientos (el dominio
+-- completo de ids de asiento, estén o no reservados); Disponibles()
+-- solo devuelve los que estan <Disponible>. Para agregarla haria falta
+-- exponer una operacion publica adicional en Funcion.vdmpp, por
+-- ejemplo "public IdsAsientos : () ==> set of IdAsiento ==
+-- return dom asientos;", y luego escribir aqui:
+--   inv forall f in set dom funciones,
+--             i in set (funciones(f).IdsAsientos()) &
+--         let t = funciones(f).ConsultarTitular(i) in
+--           t <> nil => t in set dom clientes;
+-- Se deja pendiente de confirmacion porque cambia Funcion.vdmpp, que
+-- no estaba en el alcance pedido para esta revision.
+
 operations
 
 public RegistrarCliente : Cliente`IdCliente * seq1 of char ==> ()
