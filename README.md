@@ -12,8 +12,7 @@ partes:
 - **Parte 2 (UPPAAL):** verificación exhaustiva por model checking del
   ciclo de vida de un asiento, que comprueba para todas las
   intercalaciones posibles entre varios clientes lo que la Parte 1 solo
-  comprobó para los escenarios de sus casos de prueba. Ver el detalle en
-  [`model-checking/README.md`](model-checking/README.md).
+  comprobó para los escenarios de sus casos de prueba.
 
 El estado de cada función se guarda en `map IdAsiento to Asiento`. Como un
 mapeo es una funcion matematica, un identificador de asiento tiene un solo
@@ -30,7 +29,7 @@ la cancelacion.
 El modelo VDM++ es secuencial: no usa `thread` ni `sync`. El modelo UPPAAL de
 la Parte 2 sí explora todas las intercalaciones posibles entre clientes, lo
 que complementa esa limitación para el subsistema del ciclo de vida de un
-asiento (ver [`model-checking/README.md`](model-checking/README.md)).
+asiento.
 
 ## Estructura
 
@@ -40,17 +39,14 @@ asiento (ver [`model-checking/README.md`](model-checking/README.md)).
     pruebas/PruebasReserva.vdmpp   clase de pruebas (CP1 a CP6)
     pruebas/script_casos.txt       script para el interprete del Toolbox
     pruebas/correr_casos.bat       corre cada caso en una sesion aparte
-    contexto/                      articulo, material complementario y zip
-    model-checking/                Parte 2: verificacion con UPPAAL (ver su README)
-    model-checking/modelo/asiento_reserva.xml            modelo UPPAAL
-    model-checking/modelo/asiento_reserva_con_error.xml  variante con error
-    model-checking/modelo/propiedades.q                  consultas para verifyta
-    model-checking/articulo/seccion_model_checking.tex   seccion para el articulo IEEE
+    model-checking/asiento_reserva.xml            modelo UPPAAL
+    model-checking/asiento_reserva_con_error.xml  variante con un error a proposito
+    model-checking/propiedades.q                  consultas para verifyta
 
 `Asiento` y `Entrada` son tipos record, no clases: `Asiento` esta declarado en
 `Funcion` y `Entrada` en `SistemaReservas`.
 
-## Cargar el modelo
+## Cargar el modelo VDM++
 
 ### VDM++ Toolbox (vppde, verificado con la version 9.0.10)
 
@@ -81,7 +77,7 @@ expresion de arranque, por ejemplo:
 Las pruebas se escribieron y ejecutaron con el Toolbox; en Overture no se
 probaron porque no estaba instalado en la maquina de desarrollo.
 
-## Correr las pruebas
+## Correr las pruebas VDM++
 
 Opcion 1, todos los casos en una sola sesion y con cobertura:
 
@@ -100,7 +96,7 @@ el Toolbox imprime el texto del error de ejecucion solo la primera vez en cada
 sesion. En la opcion 1 los casos siguientes se detienen igual, y el comando
 `backtrace` del script muestra en que operacion se detuvieron.
 
-## Casos de prueba
+## Casos de prueba VDM++
 
 - CP1 exito: Ana reserva el asiento 1 y lo compra. Estado final `<Vendido>`,
   una entrada emitida.
@@ -127,53 +123,108 @@ cuenta las funciones de `IO` y `VDMUtil` que el modelo no usa.
 
 El archivo `pruebas/vdm.tc` es generado por el interprete y se puede borrar.
 
-## Parte 2: Model Checking
+## Parte 2: Model Checking con UPPAAL
 
 La Parte 1 valida el modelo con seis casos de prueba concretos. La Parte 2
 verifica, de forma exhaustiva, que un asiento nunca termine asignado a dos
 clientes, considerando **todas** las formas en que varios clientes pueden
 intercalar sus acciones. Usa UPPAAL sobre el ciclo de vida de un asiento
 (`Disponible -> Reservado -> Vendido`, con retorno a `Disponible` por
-cancelación o por expiración del tiempo de reserva). El detalle completo,
-incluyendo las plantillas `Asiento` y `Cliente`, está en
-[`model-checking/README.md`](model-checking/README.md); aquí va el resumen.
+cancelacion o por expiracion del tiempo de reserva).
 
-### Cómo ejecutarlo
+### Comportamiento modelado
 
-Requiere UPPAAL 4.1 o superior (licencia académica gratuita en
-<https://uppaal.org>).
+```mermaid
+stateDiagram-v2
+    [*] --> Disponible
+    Disponible --> Reservado : reservar[i]? / titular = i, x = 0
+    Reservado --> Vendido : titular == i, comprar[i]?
+    Reservado --> Disponible : titular == i, cancelar[i]? / titular = 0
+    Reservado --> Disponible : x >= T_RESERVA, expira[titular]! / titular = 0
+    note right of Reservado : invariante x <= T_RESERVA
+```
 
-Interfaz gráfica: `File > Open System` con `model-checking/modelo/asiento_reserva.xml`,
-pestaña **Simulator** para recorrer el modelo paso a paso, pestaña
-**Verifier** para correr las consultas ya cargadas en el archivo.
+Cada cliente (`Cliente(id)`, con `id` de 1 a `N`) recorre
+`Libre -> ConReserva -> ConEntrada` y regresa a `Libre` si cancela o si su
+reserva expira.
 
-Línea de comandos:
+### Declaraciones globales
 
-    verifyta model-checking/modelo/asiento_reserva.xml model-checking/modelo/propiedades.q
-
-Resultado esperado: todas las consultas satisfechas en `asiento_reserva.xml`.
-En la variante `asiento_reserva_con_error.xml` (con un error introducido a
-propósito), la propiedad P2 no se cumple y el verificador devuelve una traza
-con dos clientes reservando el mismo asiento a la vez:
-
-    verifyta -t0 model-checking/modelo/asiento_reserva_con_error.xml model-checking/modelo/propiedades.q
+| Elemento | Significado |
+|---|---|
+| `N = 3` | numero de clientes que compiten por el asiento |
+| `T_RESERVA = 5` | tiempo maximo que puede durar una reserva |
+| `titular` | cliente dueño de la reserva (0 = ninguno), equivale al campo `titular` del record VDM++ |
+| `tenedores` | cuantos clientes creen tener el asiento; lo actualizan los clientes, y no se decrementa al vender porque el comprador sigue siendo el dueño |
+| `pasoPorReservado` | bandera de observacion usada por P1 |
+| `x` | reloj local del asiento, se reinicia al reservar |
 
 ### Propiedades verificadas
 
-| Id | Consulta | Qué garantiza |
+| Id | Consulta | Que garantiza |
 |---|---|---|
-| P1 | `A[] (Asiento.Vendido imply pasoPorReservado)` | no se vende sin reservar antes |
+| P1 | `A[] (Asiento.Vendido imply pasoPorReservado)` | no se vende sin reservar antes (propiedad estructural) |
 | P2 | `A[] tenedores <= 1` | no hay doble reserva |
 | P3 | `A[] (Asiento.Disponible imply titular == 0)` | un asiento libre no tiene dueño |
 | P4 | `Asiento.Reservado --> (Asiento.Vendido or Asiento.Disponible)` | toda reserva termina (vivacidad) |
-| P5 | `A[] (Asiento.Reservado imply Asiento.x <= T_RESERVA)` | una reserva no supera el tiempo límite |
-| P6 | `A[] (deadlock imply Asiento.Vendido)` | el único bloqueo es el asiento vendido |
+| P5 | `A[] (Asiento.Reservado imply Asiento.x <= T_RESERVA)` | una reserva no supera el tiempo limite (redundante con el invariante, se deja como control) |
+| P6 | `A[] (deadlock imply Asiento.Vendido)` | el unico bloqueo es el asiento vendido |
 | R1 | `E<> Asiento.Vendido` | la venta es alcanzable |
-| R2 | `E<> (Asiento.Reservado and Asiento.x == T_RESERVA)` | la expiración es alcanzable |
+| R2 | `E<> (Asiento.Reservado and Asiento.x == T_RESERVA)` | la expiracion es alcanzable |
 | R3 | `E<> Cliente(3).ConEntrada` | cualquier cliente puede comprar |
 
 R1 a R3 son controles de cordura: una propiedad `A[]` se cumple trivialmente
-en un modelo que no hace nada. Ver `model-checking/README.md` para las
-decisiones de modelado (por qué se incluyó el reloj de expiración, por qué se
-verifica un solo asiento) y la tabla de correspondencia entre el modelo
-VDM++ de la Parte 1 y el modelo UPPAAL de la Parte 2.
+en un modelo que no hace nada.
+
+### Como ejecutarlo
+
+Requiere UPPAAL 4.1 o superior (licencia academica gratuita en
+<https://uppaal.org>).
+
+**Interfaz grafica**
+
+1. `File > Open System` y abrir `model-checking/asiento_reserva.xml`.
+2. Pestaña **Simulator** para recorrer el modelo paso a paso.
+3. Pestaña **Verifier**: las consultas ya vienen cargadas en el archivo.
+   Seleccionarlas y presionar **Check**.
+
+**Linea de comandos**
+
+    verifyta model-checking/asiento_reserva.xml model-checking/propiedades.q
+
+Resultado esperado: todas las consultas satisfechas en `asiento_reserva.xml`.
+En `asiento_reserva_con_error.xml`, P2 no se cumple y el verificador devuelve
+una traza con dos clientes en `ConReserva` a la vez:
+
+    verifyta -t0 model-checking/asiento_reserva_con_error.xml model-checking/propiedades.q
+
+### Decisiones de modelado
+
+- **Se incluyo el tiempo de expiracion.** Sin el reloj, un cliente podria
+  retener la reserva indefinidamente y P4 seria falsa; con el reloj, el
+  invariante `x <= T_RESERVA` obliga a salir de `Reservado`.
+- **Se verifica un solo asiento.** El problema de exclusion es local a cada
+  asiento, y agregar varios asientos con aforo multiplica el espacio de
+  estados sin aportar una propiedad nueva sobre la doble reserva.
+- **Las transiciones son atomicas,** igual que las operaciones del modelo
+  VDM++. La diferencia es que aqui el verificador explora todas las
+  intercalaciones entre los clientes.
+
+### Relacion con el modelo VDM++
+
+| VDM++ (Parte 1) | UPPAAL (Parte 2) |
+|---|---|
+| `EstadoAsiento = <Disponible> \| <Reservado> \| <Vendido>` | ubicaciones de la plantilla `Asiento` |
+| campo `titular : [IdCliente]` | variable `titular` (0 en lugar de `nil`) |
+| `pre asientos(id).estado = <Disponible>` en `ReservarAsiento` | `reservar` solo sale de `Disponible` |
+| `pre ... titular = c` en `ComprarEntrada` | guarda `titular == i` |
+| no modelado | expiracion con reloj `x` |
+
+## Autores
+
+- Choquehuanca Zapana, Hernan Andy
+- Portugal Portugal, Eduardo Sebastian Stephan
+- Quispe Huaman, Rodrigo Ferdinand
+- Salas Aguilar, Juan Victor
+
+Asesora: Mg. Maribel Molina Barriga
