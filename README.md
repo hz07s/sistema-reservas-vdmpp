@@ -1,11 +1,21 @@
-# Sistema de Venta y Reserva de Entradas para Eventos (VDM++)
+# Sistema de Venta y Reserva de Entradas para Eventos
 
-Especificacion formal en VDM++ de un sistema de venta y reserva de entradas,
-hecha para el curso de Aspectos Formales de Especificacion y Verificacion
-(AFEV). El objetivo del modelo es que la sobreventa y la doble reserva de un
-asiento sean imposibles desde la especificacion, no desde la implementacion.
+Proyecto del curso de Aspectos Formales de Especificación y Verificación
+(AFEV), Escuela Profesional de Ingeniería de Sistemas, UNSA. Tiene dos
+partes:
 
-El estado de cada funcion se guarda en `map IdAsiento to Asiento`. Como un
+- **Parte 1 (VDM++):** especificación formal del sistema de venta y
+  reserva de entradas, validada con seis casos de prueba en el
+  intérprete del Toolbox. El objetivo del modelo es que la sobreventa y
+  la doble reserva de un asiento sean imposibles desde la
+  especificación, no desde la implementación.
+- **Parte 2 (UPPAAL):** verificación exhaustiva por model checking del
+  ciclo de vida de un asiento, que comprueba para todas las
+  intercalaciones posibles entre varios clientes lo que la Parte 1 solo
+  comprobó para los escenarios de sus casos de prueba. Ver el detalle en
+  [`model-checking/README.md`](model-checking/README.md).
+
+El estado de cada función se guarda en `map IdAsiento to Asiento`. Como un
 mapeo es una funcion matematica, un identificador de asiento tiene un solo
 registro y por lo tanto un solo estado. Sobre eso se agregan invariantes de
 aforo, de coherencia de llave, de unicidad de entradas y de integridad
@@ -17,7 +27,10 @@ estado `<Reservado>` y cuyo titular sea el mismo cliente que lo reservo. No
 existe venta directa de `<Disponible>` a `<Vendido>`. La misma regla aplica a
 la cancelacion.
 
-El modelo es secuencial: no usa `thread` ni `sync`.
+El modelo VDM++ es secuencial: no usa `thread` ni `sync`. El modelo UPPAAL de
+la Parte 2 sí explora todas las intercalaciones posibles entre clientes, lo
+que complementa esa limitación para el subsistema del ciclo de vida de un
+asiento (ver [`model-checking/README.md`](model-checking/README.md)).
 
 ## Estructura
 
@@ -28,6 +41,11 @@ El modelo es secuencial: no usa `thread` ni `sync`.
     pruebas/script_casos.txt       script para el interprete del Toolbox
     pruebas/correr_casos.bat       corre cada caso en una sesion aparte
     contexto/                      articulo, material complementario y zip
+    model-checking/                Parte 2: verificacion con UPPAAL (ver su README)
+    model-checking/modelo/asiento_reserva.xml            modelo UPPAAL
+    model-checking/modelo/asiento_reserva_con_error.xml  variante con error
+    model-checking/modelo/propiedades.q                  consultas para verifyta
+    model-checking/articulo/seccion_model_checking.tex   seccion para el articulo IEEE
 
 `Asiento` y `Entrada` son tipos record, no clases: `Asiento` esta declarado en
 `Funcion` y `Entrada` en `SistemaReservas`.
@@ -108,3 +126,54 @@ fallo no se ejecutan por diseno) y 95% de total, porque `rtinfo` tambien
 cuenta las funciones de `IO` y `VDMUtil` que el modelo no usa.
 
 El archivo `pruebas/vdm.tc` es generado por el interprete y se puede borrar.
+
+## Parte 2: Model Checking
+
+La Parte 1 valida el modelo con seis casos de prueba concretos. La Parte 2
+verifica, de forma exhaustiva, que un asiento nunca termine asignado a dos
+clientes, considerando **todas** las formas en que varios clientes pueden
+intercalar sus acciones. Usa UPPAAL sobre el ciclo de vida de un asiento
+(`Disponible -> Reservado -> Vendido`, con retorno a `Disponible` por
+cancelación o por expiración del tiempo de reserva). El detalle completo,
+incluyendo las plantillas `Asiento` y `Cliente`, está en
+[`model-checking/README.md`](model-checking/README.md); aquí va el resumen.
+
+### Cómo ejecutarlo
+
+Requiere UPPAAL 4.1 o superior (licencia académica gratuita en
+<https://uppaal.org>).
+
+Interfaz gráfica: `File > Open System` con `model-checking/modelo/asiento_reserva.xml`,
+pestaña **Simulator** para recorrer el modelo paso a paso, pestaña
+**Verifier** para correr las consultas ya cargadas en el archivo.
+
+Línea de comandos:
+
+    verifyta model-checking/modelo/asiento_reserva.xml model-checking/modelo/propiedades.q
+
+Resultado esperado: todas las consultas satisfechas en `asiento_reserva.xml`.
+En la variante `asiento_reserva_con_error.xml` (con un error introducido a
+propósito), la propiedad P2 no se cumple y el verificador devuelve una traza
+con dos clientes reservando el mismo asiento a la vez:
+
+    verifyta -t0 model-checking/modelo/asiento_reserva_con_error.xml model-checking/modelo/propiedades.q
+
+### Propiedades verificadas
+
+| Id | Consulta | Qué garantiza |
+|---|---|---|
+| P1 | `A[] (Asiento.Vendido imply pasoPorReservado)` | no se vende sin reservar antes |
+| P2 | `A[] tenedores <= 1` | no hay doble reserva |
+| P3 | `A[] (Asiento.Disponible imply titular == 0)` | un asiento libre no tiene dueño |
+| P4 | `Asiento.Reservado --> (Asiento.Vendido or Asiento.Disponible)` | toda reserva termina (vivacidad) |
+| P5 | `A[] (Asiento.Reservado imply Asiento.x <= T_RESERVA)` | una reserva no supera el tiempo límite |
+| P6 | `A[] (deadlock imply Asiento.Vendido)` | el único bloqueo es el asiento vendido |
+| R1 | `E<> Asiento.Vendido` | la venta es alcanzable |
+| R2 | `E<> (Asiento.Reservado and Asiento.x == T_RESERVA)` | la expiración es alcanzable |
+| R3 | `E<> Cliente(3).ConEntrada` | cualquier cliente puede comprar |
+
+R1 a R3 son controles de cordura: una propiedad `A[]` se cumple trivialmente
+en un modelo que no hace nada. Ver `model-checking/README.md` para las
+decisiones de modelado (por qué se incluyó el reloj de expiración, por qué se
+verifica un solo asiento) y la tabla de correspondencia entre el modelo
+VDM++ de la Parte 1 y el modelo UPPAAL de la Parte 2.
