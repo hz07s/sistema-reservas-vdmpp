@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.1//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_2.dtd'>
+<nta>
+	<declaration>const int N = 3;
+const int T_RESERVA = 5;
+
+typedef int[1,N] id_t;
+
+chan reservar[id_t], comprar[id_t], cancelar[id_t], expira[id_t];
+
+int[0,N] titular = 0;
+int[0,N] tenedores = 0;
+bool pasoPorReservado = false;</declaration>
+	<template>
+		<name x="5" y="5">Asiento</name>
+		<declaration>clock x;</declaration>
+		<location id="a0" x="-300" y="0">
+			<name x="-330" y="-34">Disponible</name>
+		</location>
+		<location id="a1" x="0" y="0">
+			<name x="-30" y="-34">Reservado</name>
+			<label kind="invariant" x="-30" y="17">x &lt;= T_RESERVA</label>
+		</location>
+		<location id="a2" x="300" y="0">
+			<name x="270" y="-34">Vendido</name>
+		</location>
+		<init ref="a0"/>
+		<transition>
+			<source ref="a0"/>
+			<target ref="a1"/>
+			<label kind="select" x="-260" y="-110">i : id_t</label>
+			<label kind="synchronisation" x="-260" y="-93">reservar[i]?</label>
+			<label kind="assignment" x="-260" y="-76">titular = i, x = 0, pasoPorReservado = true</label>
+			<nail x="-150" y="-60"/>
+		</transition>
+		<transition>
+			<source ref="a1"/>
+			<target ref="a2"/>
+			<label kind="select" x="40" y="-60">i : id_t</label>
+			<label kind="guard" x="40" y="-43">titular == i</label>
+			<label kind="synchronisation" x="40" y="-26">comprar[i]?</label>
+		</transition>
+		<transition>
+			<source ref="a1"/>
+			<target ref="a0"/>
+			<label kind="select" x="-260" y="30">i : id_t</label>
+			<label kind="guard" x="-260" y="47">titular == i</label>
+			<label kind="synchronisation" x="-260" y="64">cancelar[i]?</label>
+			<label kind="assignment" x="-260" y="81">titular = 0, pasoPorReservado = false</label>
+			<nail x="-150" y="30"/>
+		</transition>
+		<transition>
+			<source ref="a1"/>
+			<target ref="a0"/>
+			<label kind="guard" x="-260" y="110">x &gt;= T_RESERVA</label>
+			<label kind="synchronisation" x="-260" y="127">expira[titular]!</label>
+			<label kind="assignment" x="-260" y="144">titular = 0, pasoPorReservado = false</label>
+			<nail x="0" y="100"/>
+			<nail x="-300" y="100"/>
+		</transition>
+		<transition>
+			<source ref="a1"/>
+			<target ref="a1"/>
+			<label kind="select" x="-40" y="-140">i : id_t</label>
+			<label kind="synchronisation" x="-40" y="-123">reservar[i]?</label>
+			<label kind="assignment" x="-40" y="-106">titular = i, x = 0</label>
+			<nail x="-30" y="-90"/>
+			<nail x="30" y="-90"/>
+		</transition>
+	</template>
+	<template>
+		<name x="5" y="5">Cliente</name>
+		<parameter>const id_t id</parameter>
+		<location id="c0" x="-250" y="0">
+			<name x="-280" y="-34">Libre</name>
+		</location>
+		<location id="c1" x="0" y="0">
+			<name x="-30" y="-34">ConReserva</name>
+		</location>
+		<location id="c2" x="250" y="0">
+			<name x="220" y="-34">ConEntrada</name>
+		</location>
+		<init ref="c0"/>
+		<transition>
+			<source ref="c0"/>
+			<target ref="c1"/>
+			<label kind="synchronisation" x="-200" y="-95">reservar[id]!</label>
+			<label kind="assignment" x="-200" y="-78">tenedores++</label>
+			<nail x="-125" y="-60"/>
+		</transition>
+		<transition>
+			<source ref="c1"/>
+			<target ref="c2"/>
+			<label kind="synchronisation" x="40" y="-40">comprar[id]!</label>
+		</transition>
+		<transition>
+			<source ref="c1"/>
+			<target ref="c0"/>
+			<label kind="synchronisation" x="-200" y="25">cancelar[id]!</label>
+			<label kind="assignment" x="-200" y="42">tenedores--</label>
+			<nail x="-125" y="25"/>
+		</transition>
+		<transition>
+			<source ref="c1"/>
+			<target ref="c0"/>
+			<label kind="synchronisation" x="-200" y="95">expira[id]?</label>
+			<label kind="assignment" x="-200" y="112">tenedores--</label>
+			<nail x="0" y="90"/>
+			<nail x="-250" y="90"/>
+		</transition>
+	</template>
+	<system>system Asiento, Cliente;</system>
+	<queries>
+		<query>
+			<formula>A[] (Asiento.Vendido imply pasoPorReservado)</formula>
+			<comment>P1 (safety): ningun asiento llega a Vendido sin haber pasado por Reservado.</comment>
+		</query>
+		<query>
+			<formula>A[] tenedores &lt;= 1</formula>
+			<comment>P2 (safety): nunca hay dos clientes con el mismo asiento reservado o comprado.</comment>
+		</query>
+		<query>
+			<formula>A[] (Asiento.Disponible imply titular == 0)</formula>
+			<comment>P3 (safety): un asiento disponible no tiene titular.</comment>
+		</query>
+		<query>
+			<formula>Asiento.Reservado --&gt; (Asiento.Vendido or Asiento.Disponible)</formula>
+			<comment>P4 (liveness): toda reserva termina en venta o vuelve a Disponible.</comment>
+		</query>
+		<query>
+			<formula>A[] (Asiento.Reservado imply Asiento.x &lt;= T_RESERVA)</formula>
+			<comment>P5 (safety temporal): una reserva nunca dura mas de T_RESERVA.</comment>
+		</query>
+		<query>
+			<formula>A[] (deadlock imply Asiento.Vendido)</formula>
+			<comment>P6: el unico bloqueo posible es el asiento ya vendido.</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; Asiento.Vendido</formula>
+			<comment>R1 (alcanzabilidad): es posible vender el asiento.</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; (Asiento.Reservado and Asiento.x == T_RESERVA)</formula>
+			<comment>R2 (alcanzabilidad): la expiracion de la reserva es alcanzable.</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; Cliente(3).ConEntrada</formula>
+			<comment>R3 (alcanzabilidad): cualquier cliente, no solo el primero, puede obtener la entrada.</comment>
+		</query>
+	</queries>
+</nta>
